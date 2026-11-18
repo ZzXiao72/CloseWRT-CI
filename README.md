@@ -18,9 +18,13 @@ https://github.com/VIKINGYFY/packages.git
 
 源码：
 
-https://github.com/chasey-dev/immortalwrt-mt798x-rebase.git
+https://github.com/padavanonly/immortalwrt-mt798x-6.6.git
 
-https://github.com/Yuzhii0718/immortalwrt-mt798x-6.6-padavanonly.git
+分支：openwrt-24.10-6.6
+
+编译目标：MT7986 / tplink_tl-xdr6086
+
+后台地址：192.168.0.1
 
 # U-BOOT
 
@@ -34,7 +38,7 @@ https://github.com/VIKINGYFY/UBOOT-CI/releases
 
 # 固件简要说明
 
-固件每周一早上5点自动编译。
+固件已关闭定时自动编译，需在 Actions 中手动 Run workflow 触发。
 
 固件信息里的时间为编译开始的时间，方便核对上游源码提交时间。
 
