@@ -63,7 +63,9 @@ env:
 jobs:
   core:
     name: ${{inputs.WRT_SOURCE}}
-    runs-on: ubuntu-latest
+    # 固定 24.04：ubuntu-latest 已升级至 26.04，其 coreutils 为 uutils 实现，
+    # 会导致 OpenWrt 前置检查 install --version | grep GNU 失败
+    runs-on: ubuntu-24.04
     outputs:
       cache_prefix: ${{steps.initialize-values.outputs.cache_prefix}}
       cache_key: ${{steps.clone-code.outputs.cache_key}}
