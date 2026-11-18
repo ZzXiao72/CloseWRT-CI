@@ -34,6 +34,8 @@ CFG_FILE="./package/base-files/files/bin/config_generate"
 sed -i "s/192\.168\.[0-9]*\.[0-9]*/$WRT_IP/g" $CFG_FILE
 #修改默认主机名
 sed -i "s/hostname='.*'/hostname='$WRT_NAME'/g" $CFG_FILE
+#默认不生成 WAN6 接口
+sed -i 's|\tfor key in $keys; do generate_network $key $bridge_name; done|\tfor key in $keys; do generate_network $key $bridge_name; done\n\tuci -q delete network.wan6|' $CFG_FILE
 
 #配置文件修改
 echo "CONFIG_PACKAGE_luci=y" >> ./.config
@@ -95,16 +97,53 @@ exit 0
 CWRTEOL
 chmod +x ./package/base-files/files/etc/uci-defaults/98-cwrt-net
 
-#首启默认项：UPnP 开启、HNAT PPE 数量 1（与模块参数保持一致）
+#首启默认项：UPnP 开启、HNAT PPE 数量 1、删除 WAN6、纠正无线默认值
 cat > ./package/base-files/files/etc/uci-defaults/zz-cwrt-defaults <<'CWRTEOL'
 #!/bin/sh
 
+# UPnP 默认开启
 uci -q set upnpd.config.enabled='1'
 uci -q set upnpd.config.enable_upnp='1'
-uci -q commit upnpd
+uci -q commit upnpd 2>/dev/null
 
+# HNAT PPE 数量
 uci -q set turboacc.config.fastpath_mh_eth_hnat_ppenum='1'
-uci -q commit turboacc
+uci -q commit turboacc 2>/dev/null
+
+# 删除 WAN6 接口（用不上），并关闭 WAN 上的 IPv6
+uci -q delete network.wan6 2>/dev/null
+[ -n "$(uci -q get network.wan)" ] && uci -q set network.wan.ipv6='0'
+uci -q commit network 2>/dev/null
+
+# WAN 若是没填账号的 PPPoE（出厂占位值），恢复成 DHCP
+if [ "$(uci -q get network.wan.proto)" = "pppoe" ]; then
+	WANUSER="$(uci -q get network.wan.username)"
+	if [ "$WANUSER" = "username" ] || [ -z "$WANUSER" ]; then
+		uci -q set network.wan.proto='dhcp'
+		uci -q delete network.wan.username
+		uci -q delete network.wan.password
+		uci -q commit network 2>/dev/null
+	fi
+fi
+
+# 无线默认项：即使旧配置被保留，也强制纠正为 20MHz/160MHz、关 802.11k、关 U-APSD
+for sec in $(uci -q show wireless 2>/dev/null | sed -n 's/^wireless\.\([^=]*\)=wifi-device$/\1/p'); do
+	[ "$(uci -q get wireless.$sec.type)" = "mtwifi" ] || continue
+	uci -q set wireless.$sec.ieee80211k='0'
+	uci -q set wireless.$sec.uapsd='0'
+	uci -q set wireless.$sec.noscan='0'
+	case "$(uci -q get wireless.$sec.band)" in
+		2g)
+			uci -q set wireless.$sec.htmode='HE20'
+			uci -q set wireless.$sec.channel='auto'
+		;;
+		5g)
+			uci -q set wireless.$sec.htmode='HE160'
+			uci -q set wireless.$sec.channel='auto'
+		;;
+	esac
+done
+uci -q commit wireless 2>/dev/null
 
 exit 0
 CWRTEOL
