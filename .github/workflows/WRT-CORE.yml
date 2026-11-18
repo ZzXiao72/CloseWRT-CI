@@ -298,11 +298,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           repo="${{ github.repository }}"
-          # 只保留最新 1 个 Release（含 tag）
-          gh api "repos/$repo/releases" --paginate --jq '.[].tag_name' | sed '1d' | while read -r TAG; do
-            [ -z "$TAG" ] && continue
+          keep="$WRT_CONFIG-$WRT_INFO-$WRT_BRANCH-$WRT_DATE"
+          # 只保留本次发布的 Release（含 tag），其余（含草稿）一并删除
+          gh api "repos/$repo/releases" --paginate --jq '.[] | "\(.id) \(.tag_name)"' | while read -r ID TAG; do
+            [ -z "$ID" ] && continue
+            [ "$TAG" = "$keep" ] && continue
             echo "删除旧版本：$TAG"
-            gh api -X DELETE "repos/$repo/releases/tags/$TAG" || true
+            gh api -X DELETE "repos/$repo/releases/$ID" || true
             gh api -X DELETE "repos/$repo/git/refs/tags/$TAG" || true
           done
 
