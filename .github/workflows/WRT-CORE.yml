@@ -292,6 +292,20 @@ jobs:
             内核版本：${{env.WRT_KVER}}
             插件列表：${{env.WRT_LIST}}
 
+      - name: Prune Old Releases
+        if: ${{ env.WRT_TEST != 'true' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          repo="${{ github.repository }}"
+          # 只保留最新 1 个 Release（含 tag）
+          gh api "repos/$repo/releases" --paginate --jq '.[].tag_name' | sed '1d' | while read -r TAG; do
+            [ -z "$TAG" ] && continue
+            echo "删除旧版本：$TAG"
+            gh api -X DELETE "repos/$repo/releases/tags/$TAG" || true
+            gh api -X DELETE "repos/$repo/git/refs/tags/$TAG" || true
+          done
+
   cache-rollover:
     name: Roll cache generations
     needs: core
