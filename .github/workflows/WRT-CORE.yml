@@ -222,26 +222,7 @@ jobs:
         run: |
           cd ./wrt/
 
-          mkdir -p $GITHUB_WORKSPACE/build-reports
-          make -j$(nproc) BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/parallel.tsv" || \
-            make -j1 V=s BUILD_TIME_LOG="$GITHUB_WORKSPACE/build-reports/serial.tsv"
-
-      - name: Collect Build Reports
-        if: ${{ !inputs.WRT_TEST && always() }}
-        continue-on-error: true
-        run: |
-          cd ./wrt/
-
-          $GITHUB_WORKSPACE/.github/scripts/collect-build-reports.sh
-
-      - name: Upload Build Reports
-        if: ${{ !inputs.WRT_TEST && always() }}
-        continue-on-error: true
-        uses: actions/upload-artifact@v7
-        with:
-          name: build-reports-${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{github.run_attempt}}
-          path: ./build-reports/
-          retention-days: 7
+          make -j$(nproc) || make -j1 V=s
 
       - name: Save Build Cache
         if: ${{ !inputs.WRT_TEST && success() && steps.cache-restore.outputs.cache-hit != 'true' }}
@@ -269,35 +250,29 @@ jobs:
         run: |
           cd ./wrt/ && mkdir ./upload/
 
-          cp -f ./.config ./upload/Config-"$WRT_CONFIG"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_DATE".txt
-
           if [[ "$WRT_TEST" != 'true' ]]; then
             echo "WRT_KVER=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^kernel - \K[\d\.]+' {} \;)" >> $GITHUB_ENV
             echo "WRT_LIST=$(find ./bin/targets/ -type f -name "*.manifest" -exec grep -oP '^luci-(app|theme)[^ ]*' {} \; | tr '\n' ' ')" >> $GITHUB_ENV
 
-            find ./bin/targets/ -iregex ".*\(buildinfo\|json\|sha256sums\|packages\)$" -exec rm -rf {} +
-
-            for FILE in $(find ./bin/targets/ -type f -iname "*$WRT_TARGET*") ; do
+            # 只保留路由器固件镜像，其余产物（配置、buildinfo、json、sha256sums、packages 等）一律不产生
+            for FILE in $(find ./bin/targets/ -type f -iname "*.bin" -iname "*$WRT_TARGET*") ; do
               EXT=$(basename $FILE | cut -d '.' -f 2-)
               NAME=$(basename $FILE | cut -d '.' -f 1 | grep -io "\($WRT_TARGET\).*")
               NEW_FILE="$NAME"-"$WRT_INFO"-"$WRT_BRANCH"-"$WRT_WIFI"-"$WRT_DATE"."$EXT"
               mv -f $FILE ./upload/$NEW_FILE
             done
 
-            find ./bin/targets/ -type f -exec mv -f {} ./upload/ \;
-
             make clean -j$(nproc)
           fi
 
       - name: Release Firmware
+        if: ${{ env.WRT_TEST != 'true' }}
         uses: softprops/action-gh-release@master
         with:
           tag_name: ${{env.WRT_CONFIG}}-${{env.WRT_INFO}}-${{env.WRT_BRANCH}}-${{env.WRT_DATE}}
           files: ./wrt/upload/*.*
           body: |
-            这是个平台固件包，内含多个设备！
-            请注意选择你需要的设备固件！
-            不要问，刷就完事了！
+            本 Release 仅包含 tplink_tl-xdr6086 路由器固件，不含其他产物。
 
             全系带闭源硬件加速，别问了！
 
