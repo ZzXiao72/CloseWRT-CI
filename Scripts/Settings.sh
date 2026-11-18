@@ -15,6 +15,10 @@ MTWIFI_SH="./package/mtk/applications/mtwifi-cfg/files/mtwifi.sh"
 if [ -f "$MTWIFI_SH" ]; then
 	#修改默认名称密码
 	sed -i -E "s/ImmortalWrt/$WRT_SSID/g; s/(.*)encryption=none/\1encryption=psk2+ccmp\n\1key=$WRT_WORD/" $MTWIFI_SH
+
+	#默认无线参数：2.4G 20MHz 且不强制40MHz、5G 自动信道 160MHz、关闭 802.11k、关闭 U-APSD
+	sed -i -e 's/htmode="HE40"/htmode="HE20"/' -e 's/htbsscoex="1"/htbsscoex="0"/' -e 's/channel="36"/channel="auto"/' "$MTWIFI_SH"
+	sed -i 's|set wireless.${dev}.noscan=${htbsscoex}|set wireless.${dev}.noscan=${htbsscoex}\n\t\t\t\t\tset wireless.${dev}.ieee80211k=0\n\t\t\t\t\tset wireless.${dev}.uapsd=0|' "$MTWIFI_SH"
 fi
 
 MTWIFI_UC="./package/mtk/applications/mtwifi-cfg-ucode/files/lib/wifi/mtwifi.uc"
@@ -90,6 +94,31 @@ uci -q commit dhcp
 exit 0
 CWRTEOL
 chmod +x ./package/base-files/files/etc/uci-defaults/98-cwrt-net
+
+#首启默认项：UPnP 开启、HNAT PPE 数量 1（与模块参数保持一致）
+cat > ./package/base-files/files/etc/uci-defaults/zz-cwrt-defaults <<'CWRTEOL'
+#!/bin/sh
+
+uci -q set upnpd.config.enabled='1'
+uci -q set upnpd.config.enable_upnp='1'
+uci -q commit upnpd
+
+uci -q set turboacc.config.fastpath_mh_eth_hnat_ppenum='1'
+uci -q commit turboacc
+
+exit 0
+CWRTEOL
+chmod +x ./package/base-files/files/etc/uci-defaults/zz-cwrt-defaults
+
+#HNAT 模块按 1 个 PPE 加载
+mkdir -p ./package/base-files/files/etc/modules.d
+echo 'mtkhnat ppe_cnt=1' > ./package/base-files/files/etc/modules.d/19-cwrt-hnat
+
+#默认计划任务：每周三、周日 7:00 重启（周日=0，周三=3）
+mkdir -p ./package/base-files/files/etc/crontabs
+cat > ./package/base-files/files/etc/crontabs/root <<'CWRTEOL'
+0 7 * * 0,3 /sbin/reboot
+CWRTEOL
 
 #引入私有扩展配置
 if [ -f "$GITHUB_WORKSPACE/Config/PRIVATE.txt" ]; then
