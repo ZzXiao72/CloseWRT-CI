@@ -38,6 +38,59 @@ echo "CONFIG_PACKAGE_luci-theme-$WRT_THEME=y" >> ./.config
 echo "CONFIG_PACKAGE_luci-app-$WRT_THEME=y" >> ./.config
 echo "CONFIG_PACKAGE_luci-app-$WRT_THEME-config=y" >> ./.config
 
+#首启网络兜底：config_generate 未生成 lan 时，写入可用的 LAN + DHCP 配置
+mkdir -p ./package/base-files/files/etc/uci-defaults
+cat > ./package/base-files/files/etc/uci-defaults/98-cwrt-net <<'CWRTEOL'
+#!/bin/sh
+
+[ -f /etc/config/network ] || touch /etc/config/network
+
+if ! uci -q get network.lan >/dev/null; then
+	uci -q batch <<-EOF
+		set network.lan='interface'
+		set network.lan.device='br-lan'
+		set network.lan.proto='static'
+		set network.lan.ipaddr='192.168.0.1'
+		set network.lan.netmask='255.255.255.0'
+		set network.lan.ip6assign='60'
+	EOF
+
+	uci -q batch <<-EOF
+		set network.cwrt_lan_dev='device'
+		set network.cwrt_lan_dev.name='br-lan'
+		set network.cwrt_lan_dev.type='bridge'
+	EOF
+
+	for dev in lan1 lan2 lan3 lan4; do
+		[ -d "/sys/class/net/$dev" ] && uci -q add_list network.cwrt_lan_dev.ports="$dev"
+	done
+
+	[ -d /sys/class/net/eth1 ] && {
+		uci -q batch <<-EOF
+			set network.wan='interface'
+			set network.wan.device='eth1'
+			set network.wan.proto='dhcp'
+		EOF
+	}
+fi
+
+uci -q get dhcp.lan >/dev/null || {
+	uci -q batch <<-EOF
+		set dhcp.lan='dhcp'
+		set dhcp.lan.interface='lan'
+		set dhcp.lan.start='100'
+		set dhcp.lan.limit='150'
+		set dhcp.lan.leasetime='12h'
+	EOF
+}
+
+uci -q commit network
+uci -q commit dhcp
+
+exit 0
+CWRTEOL
+chmod +x ./package/base-files/files/etc/uci-defaults/98-cwrt-net
+
 #引入私有扩展配置
 if [ -f "$GITHUB_WORKSPACE/Config/PRIVATE.txt" ]; then
 	echo "Applying private configurations from PRIVATE.txt..."
